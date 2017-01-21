@@ -160,6 +160,35 @@ class Vertex(object):
     def __validateArgs__(self, coord, mesh):
         if len(coord) != mesh.adim: raise Exception()
 
+class Edge(tuple):
+    # def __init__(self, vertices, simplices=set()):
+        self.__validateArgs__(vertices, simplices)
+        self.vertices = min(vertices), max(vertices)
+        self.simplices = simplices # simplices that share that edge
+        self.__center__ = None
+
+        every simplex gets a list of its edges - remove Simplex.vertices
+        now one only has to create the edges and ensure uniqueness
+
+        this has the advantage, that one does not need to build the set intersections from above
+        in each refine one just removes the simplex from the edge on refinement
+        but one also has to ensure that new simplices dont create unnecessary edges
+
+        you also dont need the local dict "refinedEdges" in Simplex
+
+        beim bisect entfernt man dann eine edge und fuegt eine neue hinzu
+        # simplex.edges = [Edge(vertex[i-1], vertex[i]) for i in range(len(vertex))]
+        # now the next ref. edge is (i+1)%d (i+2)%d
+        # new_vertex = refEdge.center()
+        # ne1 = Edge(new_vertex, refEdge[0])
+        # ne2 = Edge(new_vertex, refEdge[1])
+        # ie s1.edges = [...] + [ne1, ne2] + [...]
+
+    @property
+    def center(self): 
+        if self.__center__ is None: self.__center__ = (self.vertices[0].coord + self.vertices[1].coord)/2
+        return self.__center__
+
 class Simplex(object): 
     def __init__(self, vertices, mesh):
         self.__validateArgs__(vertices, mesh)
