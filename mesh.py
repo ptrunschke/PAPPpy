@@ -61,6 +61,8 @@ class Mesh(object):
 
         self.__stage__ = 0
 
+        self.refinements = 0
+
         # For this, the point needs to be uniquely represented! (two different simplices, sharing the same point, also point to the same pt)
         # ensure that a simplex can only be initialized with Vertex-objects - this itself shoud ensure uniqueness
 
@@ -83,8 +85,17 @@ class Mesh(object):
             verts = [self.vertices[i] for i in vis]
             Simplex(verts, self)
 
-    def write_c4n(self): raise NotImplementedError()
-    def write_n4e(self): raise NotImplementedError()
+    def write_c4n(self):
+        ret = ""
+        for v in self.vertices:
+            ret += " ".join(map(str, v.coord)) + "\n"
+        return ret
+
+    def write_n4e(self): 
+        ret = ""
+        for s in self.simplices:
+            ret += " ".join(str(v.idx) for v in s.vertices) + "\n"
+        return ret
 
     @property
     def vertices(self): return self.__vertices__
@@ -134,6 +145,7 @@ class Mesh(object):
         while self.refinementAgenda:
             # print self.refinementAgenda
             self.refinementAgenda.popleft().run()
+            self.refinements += 1
 
 class Vertex(object): 
     def __init__(self, coord, mesh):
@@ -196,9 +208,6 @@ class Simplex(object):
         return [tuple(sorted((self.vertices[i-1], self.vertices[i]))) for i in range(len(self.vertices))]
 
     def bisect(self):
-        global bisections 
-        bisections += 1
-
         # print("I'm not sure if the implementation is correct in nD.")
         if self.refEdge in self.refinedEdges:
             vn = self.refinedEdges[self.refEdge]
@@ -217,19 +226,17 @@ class Simplex(object):
         s2.refinedEdges = {e:v for e,v in self.refinedEdges.items() if e in s2.edges}
         s2.__refIdx__ = i2
         return s1,s2
-bisections = 0
 
 if __name__=='__main__':
+
     m = Mesh(2,2)
     m.read_c4n("""\
     0 0
     0 1
     1 0
-    1 3
     """)
     m.read_n4e("""\
     0 1 2
-    3 1 2
     """)
 
     # print("Uniform refinement ...")
@@ -244,11 +251,31 @@ if __name__=='__main__':
     mark = lambda: choice(list(m.simplices)).mark()
     # mark = lambda: list(m.simplices)[0].mark()
 
-    print("Random refinement ...")
-    for i in range(1000):
-        mark()
-        m.refine()
-    print("Done.")
-    print("Marked 100 simplices, needed %d additional refinements."%(bisections-100))
-    m.plot()
+    # print("Random refinement ...")
+    # marks = 1000
+    # for i in range(marks):
+    #     mark()
+    #     m.refine()
+    # print("Done.")
+    # print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
+
+    # m.plot()
+    # plt.show()
+
+    # [r]andomly [r]efined [r]eference [t]riangle
+    # with open("rrrt.c4n","w") as f: f.write(m.write_c4n())
+    # with open("rrrt.n4e","w") as f: f.write(m.write_n4e())
+
+    marksls = range(100,8000,200)
+    add_marks = []
+    for marks in marksls:
+        for i in range(200):
+            mark()
+            m.refine()
+        # m.refinements -= 200
+        add_marks.append(m.refinements)
+
+    plt.plot(marksls, add_marks, 'o-')
+    plt.xlabel("markings")
+    plt.ylabel("refinements")
     plt.show()
