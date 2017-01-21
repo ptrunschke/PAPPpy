@@ -160,11 +160,11 @@ class Vertex(object):
     def __validateArgs__(self, coord, mesh):
         if len(coord) != mesh.adim: raise Exception()
 
-class Edge(tuple):
-    # def __init__(self, vertices, simplices=set()):
-        self.__validateArgs__(vertices, simplices)
+class Edge(object):
+    def __init__(self, vertices, simplex):
+        self.__validateArgs__(vertices, simplex)
         self.vertices = min(vertices), max(vertices)
-        self.simplices = simplices # simplices that share that edge
+        self.simplices = set() # simplices that share that edge
         self.__center__ = None
 
         every simplex gets a list of its edges - remove Simplex.vertices
@@ -182,7 +182,28 @@ class Edge(tuple):
         # new_vertex = refEdge.center()
         # ne1 = Edge(new_vertex, refEdge[0])
         # ne2 = Edge(new_vertex, refEdge[1])
-        # ie s1.edges = [...] + [ne1, ne2] + [...]
+        # s1 = Simplex(replace(..., new_vertex))
+        # s2 = Simplex(replace(..., new_vertex))
+        # refEdge.simplices.remove(self)
+        # if not refEdge.simplices:
+        #     refEdge[0].edges.remove(refEdge)
+        #     refEdge[1].edges.remove(refEdge)
+
+        create the edges in the simplex constructor:
+        self.edges = [Edge(vertex1,vertex2) for ...]
+        and in Edge.__new__:
+            try: return next(vertex1.edges & vertex2.edges)
+            except StopIteration: return ...
+
+        simplex.vertices
+        simplex.edges
+
+        vertex.edges
+
+        edge.vertices # just the two that define the edge
+        edge.simplices # all connected 
+
+    def __getitem__(self, idx): return self.vertices[idx]
 
     @property
     def center(self): 
