@@ -2,38 +2,34 @@ from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 
-def replace(ls, i, v):
-    ret = ls[:]
-    ret[i] = v
-    return ret
 
-class Refine(object):
-    def __init__(self, simplex, mesh):
-        self.simplex = simplex
-        self.mesh = mesh
-        simplex.untouched = False
-
-    def run(self):
-        s1,s2 = self.simplex.bisect()
-        new_vertex = s1.vertices[s1.__refIdx__]
-        self.mesh.refinementAgenda.append(SplitEdge(self.simplex.refEdge, new_vertex, self.mesh))
-        self.mesh.removeSimplex(self.simplex)
-        self.mesh.addSimplex(s1)
-        self.mesh.addSimplex(s2)
+# class Refine(object):
+#     def __init__(self, simplex, mesh):
+#         self.simplex = simplex
+#         self.mesh = mesh
+#     def run(self):
+#         s1,s2 = self.simplex.bisect()
+#         new_vertex = self.simplex.refEdge.center # vertices[s1.__refIdx__]
+#         # self.mesh.refinementAgenda.append(SplitEdge(self.simplex.refEdge, new_vertex, self.mesh)) # das ist unnoetig, falls dieses split-edge bereits in der agenda ist!
+#         self.mesh.addSimplex(s1)
+#         self.mesh.addSimplex(s2)
 
 class SplitEdge(object):
-    def __init__(self, edge, vertex, mesh):
+    def __init__(self, edge, mesh):
         self.__validateArgs__(edge, mesh)
         self.edge = edge
         self.mesh = mesh
 
     def run(self):
-        v1s = {s for s in self.edge[0].simplices if s.untouched}
-        v2s = {s for s in self.edge[1].simplices if s.untouched}
-        unconformal = v1s & v2s # - {self.simplex} # only non-empty if a simplex still has vnew as a hanging node; self.simplex must have been in the agenda
-        if not unconformal: return
-        self.mesh.refinementAgenda.extend(map(lambda s: Refine(s, self.mesh), unconformal))
-        self.mesh.refinementAgenda.append(self)
+        while self.edge.simplices:
+            s = next(iter(self.edge.simplices))
+            s.bisect()
+        # self.edge.destruct() # has already been destructed by the destructor of the last simplex
+
+        # if not self.edge.simplices: return
+        # for s in self.edge.simplices: s.mark()
+        # # self.mesh.refinementAgenda.extend(map(lambda s: Refine(s, self.mesh), self.edge.simplices))
+        # self.mesh.refinementAgenda.append(self)
 
     def __validateArgs__(self, edge, mesh):
         if not all(v.mesh is mesh for v in edge): raise Exception()
@@ -44,11 +40,7 @@ class Mesh(object):
         dim : dimension of objects in Triangulation
         adim : dimension of surrounding space
         """
-        # Mesh has two phases:
-        #     0 - just initialized (only vertices can be added (vertices -> property))
-        #     1 - all vertices added (after calling 'finishVertexAccumulation()' (does nothing but increment the private 'stage' integer - but good for the user - easy to find errors)
-        #             only simplices can be added)
-
+        # A Simplex-object may be annotated to contain information about its degrees of freedom (postpone)
         self.__validateArgs__(dim, adim)
 
         self.dim = dim
@@ -58,19 +50,7 @@ class Mesh(object):
         self.__simplices__ = set()
 
         self.refinementAgenda = deque()
-
-        self.__stage__ = 0
-
         self.refinements = 0
-
-        # For this, the point needs to be uniquely represented! (two different simplices, sharing the same point, also point to the same pt)
-        # ensure that a simplex can only be initialized with Vertex-objects - this itself shoud ensure uniqueness
-
-        # commonSimplices(v1,v2) = v1.simplices & v2.simplices (the simplices sharing a point correspond to the edges going out from that point)
-        # Simplex(vs=[v1,v2,...]):
-        #     for vi in vs: vi.simplices.append(that simplex)
-
-        # A Simplex-object may be annotated to contain information about its degrees of freedom (postpone)
 
     def read_c4n(self, c4n):
         cs = c4n.split('\n')[:-1]
@@ -101,7 +81,6 @@ class Mesh(object):
     def vertices(self): return self.__vertices__
 
     def addVertex(self, vertex):
-        # if self.__stage__>0: raise Exception()
         vertex.idx = len(self.__vertices__)
         self.__vertices__.append(vertex)
 
@@ -109,22 +88,16 @@ class Mesh(object):
     def simplices(self): return self.__simplices__
 
     def addSimplex(self, simplex):
-        # if self.__stage__>1: raise Exception()
-        # simplex.idx = len(self.__simplices__)
-        # self.__simplices__.append(simplex)
         self.__simplices__.add(simplex)
-        # self.__stage__ = 1
 
     def removeSimplex(self, simplex):
-        for v in simplex.vertices: #TODO: dont do this here
-            v.simplices.remove(simplex)
         self.__simplices__.remove(simplex) 
 
     def __validateArgs__(self, dim, adim):
         if dim<=0: raise Exception()
         if adim<dim: raise Exception()
 
-    def plot(self):
+    def plot(self, mark_nodes=True):
         if self.dim != 2: raise NotImplementedError()
         edges = set()
         for s in self.simplices:
@@ -132,8 +105,9 @@ class Mesh(object):
                 edges.add(tuple(sorted((s.vertices[i-1], s.vertices[i]))))
         for e in edges:
             plt.plot((e[0].coord[0], e[1].coord[0]), (e[0].coord[1], e[1].coord[1]), 'k-')
-        for v in self.vertices:
-            plt.plot((v.coord[0],), (v.coord[1],), 'ro')
+        if mark_nodes:
+            for v in self.vertices:
+                plt.plot((v.coord[0],), (v.coord[1],), 'ro')
         l = plt.xlim()
         sl = sum(l)*0.05
         plt.xlim(l[0]-sl, l[1]+sl)
@@ -147,12 +121,13 @@ class Mesh(object):
             self.refinementAgenda.popleft().run()
             self.refinements += 1
 
+
 class Vertex(object): 
     def __init__(self, coord, mesh):
         self.__validateArgs__(coord, mesh)
 
         self.coord = np.asarray(coord)
-        self.simplices = set()
+        self.edges = set()
 
         self.mesh = mesh
         mesh.addVertex(self) #TODO: python make method only callable from some position
@@ -160,54 +135,47 @@ class Vertex(object):
     def __validateArgs__(self, coord, mesh):
         if len(coord) != mesh.adim: raise Exception()
 
+
 class Edge(object):
-    def __init__(self, vertices, simplex):
-        self.__validateArgs__(vertices, simplex)
+    def __new__(cls, vertices, mesh):
+        edges = vertices[0].edges & vertices[1].edges
+        if len(edges)==0: return object.__new__(cls)
+        elif len(edges)==1: return edges.pop()
+        else: raise Exception()
+
+    def __init__(self, vertices, mesh):
+        if hasattr(self, 'vertices'): return
+        self.__validateArgs__(vertices, mesh)
+
         self.vertices = min(vertices), max(vertices)
-        self.simplices = set() # simplices that share that edge
+        self[0].edges.add(self)
+        self[1].edges.add(self)
+        self.mesh =  mesh
+
+        self.marked = False
+        self.simplices = set() # simplices that share this edge
         self.__center__ = None
 
-        every simplex gets a list of its edges - remove Simplex.vertices
-        now one only has to create the edges and ensure uniqueness
+    def __validateArgs__(self, vertices, mesh):
+        pass
 
-        this has the advantage, that one does not need to build the set intersections from above
-        in each refine one just removes the simplex from the edge on refinement
-        but one also has to ensure that new simplices dont create unnecessary edges
-
-        you also dont need the local dict "refinedEdges" in Simplex
-
-        beim bisect entfernt man dann eine edge und fuegt eine neue hinzu
-        # simplex.edges = [Edge(vertex[i-1], vertex[i]) for i in range(len(vertex))]
-        # now the next ref. edge is (i+1)%d (i+2)%d
-        # new_vertex = refEdge.center()
-        # ne1 = Edge(new_vertex, refEdge[0])
-        # ne2 = Edge(new_vertex, refEdge[1])
-        # s1 = Simplex(replace(..., new_vertex))
-        # s2 = Simplex(replace(..., new_vertex))
-        # refEdge.simplices.remove(self)
-        # if not refEdge.simplices:
-        #     refEdge[0].edges.remove(refEdge)
-        #     refEdge[1].edges.remove(refEdge)
-
-        create the edges in the simplex constructor:
-        self.edges = [Edge(vertex1,vertex2) for ...]
-        and in Edge.__new__:
-            try: return next(vertex1.edges & vertex2.edges)
-            except StopIteration: return ...
-
-        simplex.vertices
-        simplex.edges
-
-        vertex.edges
-
-        edge.vertices # just the two that define the edge
-        edge.simplices # all connected 
+    def mark(self):
+        if not self.marked:
+            self.mesh.refinementAgenda.append(SplitEdge(self, self.mesh))
 
     def __getitem__(self, idx): return self.vertices[idx]
 
+    def removeSimplex(self, simplex):
+        self.simplices.remove(simplex)
+        if not self.simplices: self.destruct()
+
+    def destruct(self):
+        self[0].edges.remove(self)
+        self[1].edges.remove(self)
+
     @property
     def center(self): 
-        if self.__center__ is None: self.__center__ = (self.vertices[0].coord + self.vertices[1].coord)/2
+        if self.__center__ is None: self.__center__ = Vertex((self.vertices[0].coord + self.vertices[1].coord)/2, self.mesh)
         return self.__center__
 
 class Simplex(object): 
@@ -215,66 +183,56 @@ class Simplex(object):
         self.__validateArgs__(vertices, mesh)
 
         self.vertices = vertices
-        for v in vertices: 
-            v.simplices.add(self)
+        self.edges = set()
+        for i in range(len(self.vertices)):
+            e = Edge((self.vertices[i-1], self.vertices[i]), mesh)
+            e.simplices.add(self)
+            self.edges.add(e) # why would you need that? to remove the reference to self if self has been refined (bisect)
 
         self.mesh = mesh
         mesh.addSimplex(self)
 
-        self.refinedEdges = dict()
-
-        self.untouched = True # False when the simplex is sceduled for refinement
+        # self.marked = False
         self.__refIdx__ = 0 # the index of the vertex that was added most recently
     
     def __validateArgs__(self, vertices, mesh):
         if not all(isinstance(v, Vertex) for v in vertices): raise Exception()
         if len(vertices)!=mesh.dim+1: raise Exception()
 
-    # @property
-    # def refIdx(self): return self.__refIdx__ # the index of the most recently added vertex in self.vertices
-    @property
-    def refVertex(self): return self.vertices[self.__refIdx__]
+    def destruct(self):
+        for e in self.edges: 
+            e.removeSimplex(self)
+        self.mesh.removeSimplex(self)
 
     @property
     def refEdgeIdc(self): 
         d = len(self.vertices)
         return (self.__refIdx__+1)%d, (self.__refIdx__+2)%d
+
     @property
     def refEdge(self):
         i1,i2 = self.refEdgeIdc
         v1,v2 = self.vertices[i1], self.vertices[i2]
-        return min(v1,v2), max(v1,v2)
-    @refEdge.setter
-    def refEdge(self, val):
-        raise NotImplementedError()
+        return Edge((v1,v2), self.mesh)
 
     def mark(self):
-        if self.untouched:
-            self.mesh.refinementAgenda.append(Refine(self, self.mesh))
-            # self.untouched = False # here or in Refine.init?
+        self.refEdge.mark()
+        # if not self.marked:
+        #     self.mesh.refinementAgenda.append(Refine(self, self.mesh))
+        #     self.marked = True
     
-    @property
-    def edges(self):
-        return [tuple(sorted((self.vertices[i-1], self.vertices[i]))) for i in range(len(self.vertices))]
-
     def bisect(self):
-        # print("I'm not sure if the implementation is correct in nD.")
-        if self.refEdge in self.refinedEdges:
-            vn = self.refinedEdges[self.refEdge]
-            del self.refinedEdges[self.refEdge]
-        else:
-            v1,v2 = self.refEdge
-            vn = Vertex((v1.coord + v2.coord)/2, self.mesh)
-            for s in v1.simplices & v2.simplices:
-                s.refinedEdges[(v1,v2)] = vn
+        def replaced(ls, i, v):
+            ret = ls[:]
+            ret[i] = v
+            return ret
 
-        i1,i2 = self.refEdgeIdc
-        s1 = Simplex(replace(self.vertices, i1, vn), self.mesh)
-        s1.__refIdx__ = i1
-        s1.refinedEdges = {e:v for e,v in self.refinedEdges.items() if e in s1.edges}
-        s2 = Simplex(replace(self.vertices, i2, vn), self.mesh)
-        s2.refinedEdges = {e:v for e,v in self.refinedEdges.items() if e in s2.edges}
-        s2.__refIdx__ = i2
+        new_vertex = self.refEdge.center
+        s1 = Simplex(replaced(self.vertices, self.refEdgeIdc[0], new_vertex), self.mesh)
+        s2 = Simplex(replaced(self.vertices, self.refEdgeIdc[1], new_vertex), self.mesh)
+        s1.__refIdx__, s2.__refIdx__ = self.refEdgeIdc
+        self.destruct()
+
         return s1,s2
 
 if __name__=='__main__':
@@ -290,7 +248,7 @@ if __name__=='__main__':
     """)
 
     # print("Uniform refinement ...")
-    # for i in range(12):
+    # for i in range(10):
     #     for s in m.simplices: s.mark() 
     #     m.refine()
     # print("Done.")
@@ -301,31 +259,33 @@ if __name__=='__main__':
     mark = lambda: choice(list(m.simplices)).mark()
     # mark = lambda: list(m.simplices)[0].mark()
 
-    # print("Random refinement ...")
-    # marks = 1000
-    # for i in range(marks):
-    #     mark()
-    #     m.refine()
-    # print("Done.")
-    # print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
+    print("This refinement produces hanging nodes - i dont know why")
 
-    # m.plot()
-    # plt.show()
+    print("Random refinement ...")
+    marks = 100
+    for i in range(marks):
+        mark()
+        m.refine()
+    print("Done.")
+    print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
+
+    m.plot(False)
+    plt.show()
 
     # [r]andomly [r]efined [r]eference [t]riangle
     # with open("rrrt.c4n","w") as f: f.write(m.write_c4n())
     # with open("rrrt.n4e","w") as f: f.write(m.write_n4e())
 
-    marksls = range(100,8000,200)
-    add_marks = []
-    for marks in marksls:
-        for i in range(200):
-            mark()
-            m.refine()
-        # m.refinements -= 200
-        add_marks.append(m.refinements)
+    # marksls = range(100,8000,200)
+    # add_marks = []
+    # for marks in marksls:
+    #     for i in range(200):
+    #         mark()
+    #         m.refine()
+    #     # m.refinements -= 200
+    #     add_marks.append(m.refinements)
 
-    plt.plot(marksls, add_marks, 'o-')
-    plt.xlabel("markings")
-    plt.ylabel("refinements")
-    plt.show()
+    # plt.plot(marksls, add_marks, 'o-')
+    # plt.xlabel("markings")
+    # plt.ylabel("refinements")
+    # plt.show()
