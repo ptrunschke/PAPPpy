@@ -1,18 +1,17 @@
 from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 
-
-# class Refine(object):
-#     def __init__(self, simplex, mesh):
-#         self.simplex = simplex
-#         self.mesh = mesh
-#     def run(self):
-#         s1,s2 = self.simplex.bisect()
-#         new_vertex = self.simplex.refEdge.center # vertices[s1.__refIdx__]
-#         # self.mesh.refinementAgenda.append(SplitEdge(self.simplex.refEdge, new_vertex, self.mesh)) # das ist unnoetig, falls dieses split-edge bereits in der agenda ist!
-#         self.mesh.addSimplex(s1)
-#         self.mesh.addSimplex(s2)
+class Refine(object):
+    def __init__(self, simplex, mesh):
+        self.simplex = simplex
+        self.mesh = mesh
+    def run(self):
+        self.simplex.bisect()
+        # hier liegt das problem - du kannst hier eine seite bisecten, die nicht-konformitaet erzeugt
+        # dann wird diese aber nicht aufgeloest, da kein SplitEdge zur agenda hinzugefuegt wird
+        # self.mesh.refinementAgenda.append(SplitEdge(self.simplex.refEdge, self.mesh))
 
 class SplitEdge(object):
     def __init__(self, edge, mesh):
@@ -21,15 +20,18 @@ class SplitEdge(object):
         self.mesh = mesh
 
     def run(self):
-        while self.edge.simplices:
-            s = next(iter(self.edge.simplices))
-            s.bisect()
-        # self.edge.destruct() # has already been destructed by the destructor of the last simplex
+        if self.edge.simplices:
+            for s in self.edge.simplices:
+                # if s.refEdge is self.edge:
+                # self.mesh.refinementAgenda.append(SplitEdge(s.refEdge, self.mesh))
+                self.mesh.refinementAgenda.append(Refine(s,self.mesh))
+            self.mesh.refinementAgenda.append(self)
+        else: self.edge.destruct()
 
-        # if not self.edge.simplices: return
-        # for s in self.edge.simplices: s.mark()
-        # # self.mesh.refinementAgenda.extend(map(lambda s: Refine(s, self.mesh), self.edge.simplices))
-        # self.mesh.refinementAgenda.append(self)
+        # while self.edge.simplices:
+        #     s = next(iter(self.edge.simplices))
+        #     s.bisect() # a bisect is not a split of an edge!
+        #     # so you may bisect a node but not 
 
     def __validateArgs__(self, edge, mesh):
         if not all(v.mesh is mesh for v in edge): raise Exception()
@@ -83,6 +85,10 @@ class Mesh(object):
     def addVertex(self, vertex):
         vertex.idx = len(self.__vertices__)
         self.__vertices__.append(vertex)
+
+    def unconforming(self):
+        nverts = lambda s: sum(1 for v in self.vertices if s.contains(v))
+        return [s for s in self.simplices if nverts(s)>(self.dim+1)]
 
     @property
     def simplices(self): return self.__simplices__
@@ -162,12 +168,13 @@ class Edge(object):
     def mark(self):
         if not self.marked:
             self.mesh.refinementAgenda.append(SplitEdge(self, self.mesh))
+            self.marked = True
 
     def __getitem__(self, idx): return self.vertices[idx]
 
     def removeSimplex(self, simplex):
         self.simplices.remove(simplex)
-        if not self.simplices: self.destruct()
+        # if not self.simplices: self.destruct() # dont do this - there may be simplices that have this edge but are not created (refined) from larger ones yet
 
     def destruct(self):
         self[0].edges.remove(self)
@@ -194,10 +201,21 @@ class Simplex(object):
 
         # self.marked = False
         self.__refIdx__ = 0 # the index of the vertex that was added most recently
+
+    def plot(self):
+        if self.mesh.adim!=2: raise NotImplementedError()
+        plt.gca().add_patch(Polygon(np.array([v.coord for v in s.vertices])))
     
     def __validateArgs__(self, vertices, mesh):
         if not all(isinstance(v, Vertex) for v in vertices): raise Exception()
         if len(vertices)!=mesh.dim+1: raise Exception()
+
+    def contains(self, vertex):
+        O = self.vertices[0].coord
+        B = np.asarray([v.coord-O for v in self.vertices[1:]])
+        V = B.dot(vertex.coord - O)
+        # print(V)
+        return all(V >= 0) and np.linalg.norm(V,1) < 1+1e-10
 
     def destruct(self):
         for e in self.edges: 
@@ -247,30 +265,45 @@ if __name__=='__main__':
     0 1 2
     """)
 
-    # print("Uniform refinement ...")
-    # for i in range(10):
-    #     for s in m.simplices: s.mark() 
-    #     m.refine()
-    # print("Done.")
-    # m.plot()
-    # plt.show()
-
-    from random import choice
-    mark = lambda: choice(list(m.simplices)).mark()
-    # mark = lambda: list(m.simplices)[0].mark()
-
-    print("This refinement produces hanging nodes - i dont know why")
-
-    print("Random refinement ...")
-    marks = 100
-    for i in range(marks):
-        mark()
+    print("Uniform refinement ...")
+    for i in range(2):
+        for s in m.simplices: s.mark() 
         m.refine()
     print("Done.")
-    print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
-
-    m.plot(False)
+    u = m.unconforming()
+    print("Unconforming simplices: %d"%len(u))
+    m.plot()
+    if u: u[0].plot()
     plt.show()
+
+    from random import choice
+    # mark = lambda: choice(list(m.simplices)).mark()
+    mark = lambda: list(m.simplices)[0].mark()
+
+    # print("Random refinement ...")
+    # marks = 100
+    # for i in range(marks):
+    #     mark()
+    #     m.refine()
+    # print("Done.")
+    # print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
+    # print("Unconforming simplices: %d"%m.unconforming())
+
+    # mark(); m.refine()
+    # mark(); m.refine()
+    # mark(); m.refine()
+    # mark(); m.refine()
+    # mark(); m.refine()
+    # mark(); m.refine()
+    # mark(); m.refine()
+
+    # plt.figure()
+    # m.plot(False)
+    # mark(); m.refine()
+
+    # plt.figure()
+    # m.plot(False)
+    # plt.show()
 
     # [r]andomly [r]efined [r]eference [t]riangle
     # with open("rrrt.c4n","w") as f: f.write(m.write_c4n())
