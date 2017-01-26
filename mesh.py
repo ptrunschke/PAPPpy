@@ -265,15 +265,25 @@ if __name__=='__main__':
     0 1 2
     """)
 
-    print("Uniform refinement ...")
-    for i in range(2):
-        for s in m.simplices: s.mark() 
-        m.refine()
-    print("Done.")
+    # print("Uniform refinement ...")
+    # for i in range(2):
+    #     for s in m.simplices: s.mark() 
+    #     m.refine()
+    # print("Done.")
+
+    for s in m.simplices: s.mark() 
+    m.refine()
+    plt.figure()
+    m.plot()
+
+    for s in m.simplices: s.mark() 
+    m.refine()
     u = m.unconforming()
     print("Unconforming simplices: %d"%len(u))
+    plt.figure()
     m.plot()
     if u: u[0].plot()
+
     plt.show()
 
     from random import choice

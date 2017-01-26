@@ -55,7 +55,7 @@ class Mesh(object):
         self.adim = adim
         
         self.__vertices__ = []
-        self.__simplices__ = set()
+        self.__simplices__ = set() # (needs a lot of inserts/removals -> replace by linked list / deque or ensure O(1) another way DONT! list has complexity O(1))
 
         self.refinementAgenda = deque()
 
@@ -251,31 +251,31 @@ if __name__=='__main__':
     mark = lambda: choice(list(m.simplices)).mark()
     # mark = lambda: list(m.simplices)[0].mark()
 
-    # print("Random refinement ...")
-    # marks = 1000
-    # for i in range(marks):
-    #     mark()
-    #     m.refine()
-    # print("Done.")
-    # print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
+    print("Random refinement ...")
+    marks = 1000
+    for i in range(marks):
+        mark()
+        m.refine()
+    print("Done.")
+    print("Marked %d simplices, needed %d additional refinements."%(marks, m.refinements-marks))
 
-    # m.plot()
-    # plt.show()
+    m.plot()
+    plt.show()
 
     # [r]andomly [r]efined [r]eference [t]riangle
     # with open("rrrt.c4n","w") as f: f.write(m.write_c4n())
     # with open("rrrt.n4e","w") as f: f.write(m.write_n4e())
 
-    marksls = range(100,8000,200)
-    add_marks = []
-    for marks in marksls:
-        for i in range(200):
-            mark()
-            m.refine()
-        # m.refinements -= 200
-        add_marks.append(m.refinements)
+    # marksls = range(100,8000,200)
+    # add_marks = []
+    # for marks in marksls:
+    #     for i in range(200):
+    #         mark()
+    #         m.refine()
+    #     # m.refinements -= 200
+    #     add_marks.append(m.refinements)
 
-    plt.plot(marksls, add_marks, 'o-')
-    plt.xlabel("markings")
-    plt.ylabel("refinements")
-    plt.show()
+    # plt.plot(marksls, add_marks, 'o-')
+    # plt.xlabel("markings")
+    # plt.ylabel("refinements")
+    # plt.show()
