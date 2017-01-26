@@ -120,11 +120,18 @@ class EdgeABC(object):
     @abstractmethod
     def bisect(self): pass # Simplex.bisect benoetigt nicht wirklich edge.center - nur edge.bisect()
 
-class AugEdge(EdgeABC): #TODO: wirklich vererben?
-    __metaclass__ = ABCMeta
+mesh.mark(edge)
+mesh.refine:
+    for edge in self.refinementAgenda:
+        if edge.prerefine_cb():
+            e1,e2 = edge.split()
+            ...
+            edge.postrefine_cb()
 
-    # @abstractmethod
-    # def premarking_cb(self): pass #TODO: use this OR self.augmentation???
+
+class AugEdge(Edge):
+    def prerefine_cb(self):
+        return all(aug.prerefine_cb(self) for aug in self.augmentations):
 
     # def mark(self):
     #     self.marked = True
@@ -140,9 +147,31 @@ class AugEdge(EdgeABC): #TODO: wirklich vererben?
         else:
             self.mesh.refinementAgenda.append(self)
 
+why do you need a pre and post-bisction callback?
+doesnt it suffice  for the simplices to know that this edge has splitted?
+the callback then returns false as long as not all neccessary edges are refined
+then it constructs the new simplices, assigns them their vertices (they can get their edges through their vertices) and calls their bisection-callback
+
 Rename:
     mesh -> triangulation
     plot -> plot_mesh
+
+class Augmentation(object):
+    __metaclass__ = ABCMeta
+    @abstractmethod
+    def prerefine_cb(self, edge): pass
+    @abstractmethod
+    def postrefine_cb(self, edge): pass
+
+class Simplex(Augmentation):
+    def __init__(self, edges): pass
+    @property
+    def refEdge(self): pass
+
+replace edge.augmentations by two objects: PrerefineCall and PostrefineCall
+
+class SimplexSplitter(PrerefineCall):
+    def __init__(self, simplices): pass
 
 class triangulation: contains mesh and simplices
 class mesh: contains vertices and edges
